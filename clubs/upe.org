@@ -1,8 +1,53 @@
 * ProgComp Spring '15
 ** Sponsorship
 *** TODO Apprenda (pizza)
+Dean Iacovetti dean@apprenda.com.
+Definitely on board with sponsoring food again, just have to email reminder as we get closer to date.
 *** TODO Bloomberg
+Kathryn Flores kflores6@bloomberg.net
+<2014-12-24 Wed> Sent.
 *** TODO Lutron
+Mike Ioannou mioannou@lutron.com
+<2014-12-24 Wed> Sent.
 *** TODO Microsoft (via Josh)
+Send Josh infos
 *** TODO SpinFusion
+Matt Mendez mmendez@spinfusion.com
+Sent.
 *** TODO TripAdvisor
+Ask Josh who to talk to.
+*** TODO Data Communique
+Rick Plotka plotkr2@rpi.edu / rplotka@tsi400.com
+<2014-12-24 Wed> Sent
+*** TODO FactSet
+Sarah O'Brien sobrien@factset.com
+Sent.  
+<2014-12-24 Wed> Is reviewing over the coming weeks
+*** TODO VistaPrint
+Need a contact.
+<2014-12-24 Wed> Asked Josh to ask his brother about getting a contact
+*** Generic sponsorship email:
+Hello %NAME,
+
+I'm Ian Kerins, a member of the RPI chapter of Upsilon Pi Epsilon, the honor society for Computing and Information Disciplines. 
+
+%CONTACT SPECIFIC STRING
+
+Each semester, UPE hosts a programming competition at RPI, and I'm in charge of sponsorship for the coming spring semester's competition.  I'm wondering if %COMPANY would be interested in being a sponsor for the competition.  Here's a summary of the competition:
+
+- The spring semester's programming competition is on 22 February 2015.
+- All students on campus are welcome to participate.
+- The questions are intermediate to advanced algorithms questions, but usually posed as a real-world problem -- much like you'd find on a technical interview.
+- There are generally 4 questions and participants have 2.5 hours to work on them.
+- The competition is language agnostic and is held through HackerRank, a website to which competitors submit their code to be executed and graded against our test cases.
+- Sponsorship from companies goes directly to prizes and pizza for the event.
+- We generally look for $500-1000 per significant sponsor, as prizes are usually interesting and/or expensive new technology (e.g. game consoles, new embedded devices and peripherals, fancy headphones / monitors).
+- Sponsors will be featured prominently on all PR material for the competition.
+- Recruiters are welcome with a significant sponsorship to come to the competition and talk about opportunities at their company briefly after the competition ends.
+- While not required, all participants are encouraged to submit their resumes to be passed on to sponsors.  
+- Last semester about 50 people participated in the competition and 25 submitted resumes.
+
+If %COMPANY is interesting in sponsoring this competition, or if you have any questions, please let me know!
+
+Thanks,
+Ian Kerins
