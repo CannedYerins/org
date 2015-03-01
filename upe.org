@@ -26,6 +26,8 @@ Sent.
 *** TODO VistaPrint
 Need a contact.
 <2014-12-24 Wed> Asked Josh to ask his brother about getting a contact
+*** TripAdvisor jerry schneider
+*** 
 *** Generic sponsorship email:
 Hello %NAME,
 
