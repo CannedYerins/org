@@ -59,3 +59,16 @@ u and v should have + signs, not - signs
 * image processing
 ** averaging as convolution
 h(k,l) = 1/25 if |k| \leq 2 and |l| \leq 2 else 0
+* <2015-04-15 Wed> find homography
+** Load 2 images
+** load & calculate sift features
+** get matches
+** filter by ratio test
+** build homography from 4 random points called H_hat
+Take eigenvalues of (A.T dot A), pick eigenvector corresponding to smallest
+eigenvalue, normalize by last element, reshape into 3x3 matrix.
+** using threshold, find inliers for H_hat
+** find H with max # of inliers and set of inliers
+** build a formal H with all points in biggest inliers set
+Rejection criteria: distance error of all inliers and outliers compared to 
+num keypoints * tau
