@@ -1,0 +1,962 @@
+Distributed Systems
+
+* <2015-09-01 Tue> Introduction
+** Motivation
+There is no absolute ordering of events in distributed systems, so developing algorithms tolerant of this is extremely important.
+** Our model
+- entity - a single process
+- entities communicate by sending messages
+- a process runs on a single physical machine (1:1 mapping from machines to processes)
+** Foundation
+"Time, clocks, and the ordering of events in a distributed system" Leslie Lamport, Communications of the ACM. 1978
+** Lamport's Model
+- we have a set of processes that communicate by sending messages.
+- each process is a sequence of events
+- 3 types of events
+  - local event (contained within one process)
+  - send message event
+  - receive message event
+- within each process, events are totally ordered
+- there is no global (process-transcending) clock
+*** causality ("happens-before relation")
+- Event e happens before event f, e->f
+  - relation exists if both events are on the same process and e happens before f
+  - or if e is a send event for message m and f is the receive event of message m
+- The relationship is transitivie
+- 2 events are concurrent if neither happens before the other: e||f
+* <2015-09-04 Fri> Logical clocks and physical clock synchronization
+** Lamport Clocks (same 1978 paper) - Logical Clock
+Every process p_i has its own clock C_i that is used to timestamp event e at p_i, C(e) = C_i(e).
+There's also the global clock, C.  This is abstract.
+Clocks are integer clocks.
+Lamport's clock condition: if a->b, then C(a) < C(b).  Sometimes called the weak clock condition
+*** Algorithm
+Increment C_i between successive events at p_i.
+Timestamp messages with sender's C_i.
+On receiving message m with timestamp TS at p_i: C_i = 1 + max(C_i, TS)
+
+This does not produce a total ordering across processes, because there can be multiple events with the same timestamp (in different processes).
+*** Totally ordered Lamport timestamps algorithm
+C(a) = (i, C_i(a)) for event a at p_i.
+C(a) < C(b) if C_i(a) < C_j(b) or C_i(a) = C_j(b) and i<j.
+Having a total order can help with mutual exclusion.
+*** Consequences
+With Lamport clocks, for events e and f, if C(e) < C(f), either e->f or e||f.
+** Strong clock condition
+C(e) < C(f) if and only if e->f.
+** Vector clocks (Mattern 1989, Fidge 1991) - Logical Clock
+N processes.  
+Every process keeps a vector clock, an array of N integers.
+Like Lamport clocks, the vector clock is used to timestamp events and piggybacks on messages.
+*** Algorithm
+Initialize all clocks (my_VT) to array of N zeroes.
+**** On event e at self:
+my_VT(self)++
+If e is send of message m, m.VT = my_VT
+if e is a receive of m, my_VT(i) = max(m.VT(i), my_VT(i) i=1..N
+*** How to compare vector timestamps
+- e.VT = f.VT if they are equal componentwise
+- e.VT <= f.VT if they are <= componentwise
+- e.VT < f.VT if e.VT <= f.VT and e.VT != f.VT
+
+(2, 0, 0) < (2, 2, 0)
+(2, 0, 0) has no relationship to (0, 0, 1)
+*** Consequences
+**** For p(i):
+my_VT(i) is the number of events that p_i has timestamped
+my_VT(j) where i != j is the number of events that occurred at p_j that may affect p_i
+**** Still no total ordering unless you attach process id like with Lamport
+**** Can 2 events have the same timestamp?
+No.  When an event happens, its process increments its component of the vector and nobody else knows.  spooooky.
+*** Theorem: vector timestamps satisfy the strong clock condition.
+i.e. e.VT < f.VT <==> e->f
+1. e->f => e.VT < f.VT
+   - if e and f are on the same process and e occurs before f, then e.VT < f.VT because of local tick
+   - if e is send(m) and f is receive(m) then e.VT < f.VT (update on receive)
+   - other cases follow by transitivity of -> and <
+2. e.VT < f.VT => e->f
+   - prove contrapositive: !(e->f) => !(e.VT < f.VT)
+   - assume !(e->f). f->e handled by 1. so assume e||f
+   - thus, e occurs on p_i and f occurs on p_j
+   - e.VT(i) at p_i > f.VT(i) at p_j because e and f are concurrent
+   - e.VT(j) at p_i < f.VT(j) at p_j because e and f are concurrent
+   - therefore, !(e.VT < f.VT) QED
+     
+** Physical clock synchronization
+Each process has a physical clock C_i(t), ticking not on events but on some unit of actual time.
+Assume there is some UTC server (like an atomic clock).
+We want C_i (t) = t forall time.  Clocks are synchronized.  
+We want dC_i/dt = 1.
+Practically, clocks drift: (1-\rho) <= dC_i/dt <= (1+\rho) where \rho is the max drift rate.
+ 
+* <2015-09-08 Tue> Physical clock synchronization continued and mutual exclusion
+- After time delta, two clocks can differ by up to 2*rho*delta.
+- If we want forall p_a, p_b, |C_a(t) - C_b(t)| <= little_delta, or 2*rho*delta <= little_delta.
+- We need to syncrhonize every little_delta/2/rho time units.
+** Synchronization methods
+1. Push, wherein the server periodically sends the time to the process.
+2. Pull, wherein the process requests the time from the server and the server sends the time to the process.
+-  Going backward in time sucks.  Instead the OS slows its clock down until it thinks synchronization has been achieved.
+** Consequences of push in a synchronous system
+- min = lower bound on message delay (at least distance / speed of light)
+- max = upper bound on message delay
+- When the process receives the time t from the server, assuming the probability
+  distribution of the travel time is constant, set the time to t + (max + min) /
+  2
+- Accuracy is +- (max - min) / 2
+** Consequences of pull in an asynchronous system
+- Still have a min, but no known upper bound
+- Algorithm: Cristian's Method (1989)
+- Every period, p_i sends a request to the server and receives a response.  It
+  records the round trip time from the req being sent to the resp being
+  received, T_RT.
+- Range of time is from t + min (t being time on the server, not the process) to
+  t + T_RT - min
+  - Request took at least min to get there, so the longest time is T_RT - min
+- Set clock to the midpoint of the width again, t + T_RT / 2.
+- Accuracy is +- T_RT / 2 - min
+- Run this many times, and take the resulting t value with the smallest round trip time
+  - This means you've selected the t with the smallest error band
+- This does not take clock drift into account
+** These methods aren't used in real life on the Internet
+NTP uses multiple time servers.
+** QUIZ? how far apart can the clocks be and still satisfy the strong clock condition?
+** Mutual exclusion
+*** We want:
+1. Safety: a process that has the resource must release it before another process gets it.
+2. Liveness: if every process that has the resource eventually releases it, then every request is eventually granted.
+3. Happens-before: requests are granted in causal order.
+* <2015-09-11 Fri> Algorithms for distributed mutual exclusion
+** Centralized solution for mutual exclusion
+- single coordinator C
+- buncha regular ol processes p1, p2, . . .
+- 3 types of messages
+  - REQ ("i want the resource")
+  - REPLY (granting the resource)
+  - RELEASE ("i'm done with the resource")
+- C keeps a FIFO queue of requests
+- Satisfies safety and liveness but does not preserve causal order
+  - Message latency can mean that requests to C can arrive in a different order than they were sent
+** Lamport's distributed mutual exclusion (1978) - no central coordinator
+- QUIZ: If I break assumption X about the algorithm how does it break?
+*** Assumptions about the system
+1. Network is fully logically connected (scalability bottleneck)
+   - Bad.
+2. Communication is FIFO on any one channel (messages arrive in order they were sent)
+   - TCP is spooky. Bad.
+3. Messages are delivered in a finite amount of time (concerned with reliability, not with the infinite)
+   - what?
+*** Data structures
+- Every process p_i has
+  - a totally ordered Lamport clock (c_i, i)
+  - a priority queue ordered by totally ordered Lamport timestamps
+*** Algorithm
+- When p_i wants the resource, send REQ (c_i, i) to ALL processes (including itself)
+- When p_j receives REQ, put in queue and send REPLY (i) to p_i (does not send REPLY to itself)
+- p_i can access resource when:
+  1. p_i has received REPLY from every other process and
+  2. p_i's REQ is at the front of its own queue
+- To release, p_i sends RELEASE to all other processes and removes REQ from its queue
+- When p_j receives RELEASE, remove p_i from queue
+*** Mutex properties
+1. Safety: only one process can be in the critical section at a time
+   - 2 processes cannot be at the front of own queue
+   - and have received replies from all other processes
+   - when p_i accesses the resource it is at the head of every queue
+2. Liveness:
+   - no deadlock because you can only lock when all other processes say you can
+   - no starvation because timestamps are the priority
+3. Message complexity
+   - REQ: N messages
+   - REPLY: N-1 messages
+   - RELEASE: N-1 messages
+   - approx 3N messages
+*** Do we need FIFO channels?
+Yes.  No FIFO no safety.  Two processes can lock the resource. "Safety not guaranteed" - Stacy
+** Lamport variation by Ricart and Agrawala - DO EXAMPLES
+- If p_i wants resource, it doesn't send REPLY to p_j's REQ unless p_j's REQ has higher priority
+- It will defer replying until it is done with the resource
+- Don't need a queue any more, just a list of outstanding requests with a lower priority.
+*** Advantages:
+- We don't need RELEASE messages.  
+- Message complexity: approx 2N
+- We don't need FIFO channels, because the critical section is also a lock on REPLYs being sent early
+** So far: permission-based mutex algorithms.  Alternative: token-based algorithms.
+- There is a single token that is passed around the network in some fashion (the algorithm)
+- Process can only enter the critical section when it has the token.
+** Token-ring algorithm
+- Buncha processes that have a designated successor process so that they are arranged in a unidirectional ring.
+- If you get the token and you need it, access critical section.
+- Once you're done or if you didn't need it, pass it along to the next process.  yay.
+- Safety: yes.  Token.  One token.  You gotta have it.  The token, I mean.
+- Liveness:
+  - Starvation:  There's a ring.  You're in the ring.  You'll get the token.
+  - Deadlock:  No.  Stop.
+- Causality:  No.  Token goes in the ring.  Messages don't go in the ring necessarily.
+  - If you only send messages on the ring, do you get causality?
+- Message complexity:  worst case N.
+* <2015-09-15 Tue> More mutex stuff!
+** Raymond's Algorithm (Transactions on Computer Systems 1989)
+- Processes arranged in a logical tree (just a plain ol undirected tree)
+  - Trees are not graphs by being connected and acyclic
+- Initially, some process p_0 (maybe the root?) has the token
+- All the arrows point toward the node with the token
+- When another process p_i wants the token:
+  - It sends a request up the tree to the root
+  - The token is passed down the tree to p_i
+  - When it gets the token, it becomes the new root, and all the arrows now point to p_i's node
+*** The algorithm!
+- Node state:
+  - Holder: (pointer to self or neighbor); indicates the current direction of the toga-- er, token
+    - The only way that a node's arrow will change direction is if the token passes through it
+  - Asked: boolean, indicates whether the node has sent a request in the direction of the token
+  - Requests: FIFO queue, tracks to which neighbor the token needs to be sent
+    - No duplicate nodes (max size: all of your neighbors and you)
+- To request token (from perspective of single node):
+  - If holder == self and requests is empty,
+    - enter the critical section
+    - set asked = false
+  - Else,
+    - Add self to own queue
+    - if not asked:
+      - send req to holder
+      - asked = true
+- On receiving req from neighbor:
+  - If holder == self,
+    - If not in critical section and queue is empty,
+      - send token to requester
+      - update holder pointer
+      - set asked = false
+    - Else (in critical section or queue is not empty)
+      - add request to the queue
+  - Else
+    - Add requests to queue
+    - If not asked
+      - pass the request on toward the holder
+      - set asked = true
+- On receiving token:
+  - dequeue request
+  - If request == self,
+    - update holder pointer
+    - set asked = false
+    - enter critical section
+  - Else,
+    - send token to requester
+    - update holder pointer
+    - set asked = false
+    - If requests is not empty
+      - send request to holder
+      - set asked = true
+- When done with critical section:
+  - If requests is not empty
+    - dequeue request
+    - send token to requester
+    - update holder pointer
+    - set asked = false
+    - If requests is not empty
+      - send request to holder
+      - set asked = true
+ 
+*** Analysis
+- Safety: Yes, you need the token to enter critical section.
+- Liveness:
+  - Deadlock: No.  Tree has no cycles, so no circular waits.
+  - Starvation: No. Prove that if a node's queue is not empty, node eventually gets token back
+    - If queue's not empty, you request the token
+    - Some node closer to the token has you in its queue
+    - It's clearly obvious to the casual observer that this proof is over QED.
+  - Complexity: 2D where D is the diameter of the network
+    - Because this is a tree, there is only one path between any two nodes, so D is just the longest path
+    - Better than Lamport wooo, generally better than Ricart + Agrawala wooo
+      - Better if we have a small diameter, ideally D is about 2logN
+** Quorum-based Mutual Exclusion
+*** Example: majority protocol
+- Any process that wants to enter the critical section needs permission from a majority of other processes
+- For any two majorities, there's at least one process that's going to be the decision maker (i.e. is part of both majorities)
+- Thus only one process can have the majority
+*** Maekawa (1985)
+- Every process has a set of processes called the quorum. 
+- S_i is the quorum for p_i.
+- Quorums are chosen so that for all i and j, the intersection of S_i and S_j is not empty.
+- 4 properties:
+  1. Intersection: each quorum has to intersect with all of the others <-- only one necessary for safety
+  2. Minimality: no quorum is a subset of another quorum
+  3. Equal effort: we want the quorums to all be the same size (every process that wants the lock has to do the same amount of work)
+  4. Equal responsibility: every process is in D quorums
+- Smallest a quorum can be for a network of N processes: sqrt(N) 
+* <2015-09-18 Fri> Quorums and Meikawa cont., replicated log
+** Quorum sizes, according to Meikawa
+- N processes, N quorums
+- |S_i| = K forall i
+- Each member of S_i is in D-1 other quorums
+- Therefore the max # of quorums = K(D-1) + 1
+- N=K(D-1)+1.  claim: K=D
+  - (size of quorum)(# of quorums)/overlap = KN/D = N
+  - N=(D-1)K+1, K=D
+  - N=(K-1)K+1
+  - K = sqrt(N) + fraction
+** Easier, slightly larger quorums
+- Think of processes as arranged in a grid.  Not a communication topology.
+- S_i = row and column of p_i
+- |S_i| = 2sqrt(N) - 1
+  . S . .
+  S p S S
+  . S . .
+  . S . .
+*** Analysis
+- Intersection: yes.  Row i intercects every column j and vice versa.
+- Minimality: yes.  No quorum is a subset of another.
+- Equal effort: yes.  Every quorum is the same size.
+- Equal responsibility:  yes.
+- If N isn't a perfect square, reusing processes to fill in a square is the way to go.
+QUIZ: reuse processes and stuff?
+** Meikawa's algorithm 1.0
+- Use totally ordered lamport timestamps
+- Have a priority queue ordered by these timestamps
+- Have a bool "locked" flag
+- When p_i wants to enter the critical section, sends REQ (i,TS) to all members in S_i
+- On receiving REQ (i,TS) at p_j
+  - If p_j not locked
+    - send REPLY to P_i, lock
+  - Else enqueue REQ
+- When p_i gets REPLY form all S_i, enter critical section
+- When p_i finishes critical section, send RELEASE to S_i
+- On receiving RELEASE (at p_j), unlock; dequeue REQ and send REPLY and lock
+*** Analysis
+- Safety: Yes.  Quorums ensure that no two processes can get the lock at the same time.
+- Liveness:
+  - Deadlock:  No, Meikawa 1.0 suffers from deadlock
+    S_1 = {1,2,3} S_2 = {2,5,7} S_3 = {3,5,6}
+    Suppose p_1, p_2, and p_3 all want to enter C.S. at the same time
+    p_1 receives replies from 1, 3, waits for 2
+    p_2 receives replies from 2, 7, waits for 5
+    p_3 receives replies from 5, 6, waits for 3
+    Cycle in waits-for graph!  Deadlock woo.
+  - Starvation follows from deadlock
+** Meikawa 2.0
+- Message types:
+  - REQ
+  - REPLY
+  - RELEASE
+  - INQUIRE (are you in critical section?)
+  - RELINQUISH (ha ha just kidding i'm not trying to enter the critical section for now)
+  - FAIL (you can't enter the critical section)
+- When p_j receives REQ (i,TS)
+  - If not locked, send REPLY and lock
+  - Else
+    - Put REQ in queue
+    - If REQ has larger timestamp than locked timestamp, send FAIL to p_i
+    - if REQ has smaller timestamp than locked timestamp, send INQUIRE to locked process
+- If p_i receives INQUIRE and has at least one FAIL, then send RELINQUISH for all held locks
+- When p_i receives RELINQUISH, put REQ back in queue, unlock, and if queue is not empty, dequeue and send REPLY and lock
+*** Analysis
+- Deadlock: fixed
+- Starvation: uhhhh
+** ===== QUIZ CONTAINMENT ZONE ======
+** Efficient Solutions to the Replicated Log and Dictionary Problems Wuu & Bernstein PODC 1984
+- Replication: method for fault tolerance, minimizing latency, scalability
+- Dictionary: dota structure.
+- System Model:
+  - N processes (sites)
+  - 3 types of events: local, send message, receive message
+  - Can have: site crashes, lost messages, broken links, network partitions
+  - Events are atomic (do or do not, there is no try)
+  - Sites have stable storage (survives crashes)
+  - An execution is a set of events and a partial order -> denoted <E, ->>
+*** The Log Problem:
+- Each site i has a log L_i
+- For some event e, L(e) is the log of the site where e occurs
+- Find an algorithm to maintain the logs such that given an execution <E, ->>,
+    if f->e in <E, ->> then f in L(e) when e occurs
+**** Naive solution
+- p_i: send L_i with every message
+- on receive at p_j, L_j = L_j union L_i
+- Overhead: sending log (logs grow unboundedly).  Problemo.
+* <2015-09-22 Tue> Replicated log and dictionary cont.
+** Log definition
+- Every site i has log L_i
+- Every site has a local counter (clock)
+  - Just counts events (not a lamport clock)
+- Each entry e in the log corresponds to an event.
+  - Record of event e is eR
+    - e.op: operation type
+    - e.time: value of counter where that event happened
+    - e.node node ID
+  - May only be interested in logging a subset of event types
+** Log Problem continued
+- Naive solution (see last notes)
+- Once site i knows that site j knows about an event, it does not need to include that
+  event in its messages to site j
+*** Wuu-Bernstein algorithm
+- Node state
+  - C_i: local counter
+  - T_i: NxN matrix: tracks who knows what about everyone
+    - T_i(i,i) = C_i
+    - T_i(i,k) where k!=i = TS of most recent event at site k that i is aware of
+    - T_i(j,k) = t, means that site i knows that site j has learned of all events
+      at site k up through time t at site k
+- function boolean hasRec(T_i, e, k):
+    return T_i[k, eR.node] >= eR.time
+**** Algorithm
+- Initially: L_i = emptyset, T_i(j,k) = 0 forall j = 1..N, k = 1..N
+- For local event e:
+  - advance C_i
+  - T(i,i) = C_i
+  - L_i = L_i union eR
+- For send(m) to P_k:
+  - NP_i = {eR | eR in L_i and !hasRec(T_i, eR, k)}
+  - send T_i and NP_i to P_k
+- For receive m = <NP_k, T_k> from site k:
+  - L_i = L_i union NP_k
+  - Keep track of the events i knows about (row comparison).  Updating what site i knows
+    about every other site directly.
+    - For j = 1..N T_i(i,j) = max(T_i(i,j), T_k(k,j))
+  - Keep track of what i knows about what other sites know about events (component
+    comparison).  Updating indirect knowledge.  
+    - For j = 1..N, m = 1..N T_i(j,m) = max(T_i(j,m), T_k(j,m))
+* <2015-09-25 Fri> The Dictionary Problem and Global Snapshots
+** The Dictionary Problem
+- A dictionary is a set of unordered entries denoted by V
+- We want to fully replicate the dictionary at all sites
+- V_i denotes the copy of V and site i
+- Let e take place at site i
+- Then V(e) denotes the contents of V_i immediately after e takes place
+- Types of local events: insert(x), delete(x)
+- Assumptions:
+  1. For each entry x, there is at most one insert(x) over all sites
+  2. delete(x) can only be invoked at site i if x is in V_i at time of invocation
+*** The problem 
+- Find an algorithm for maintaining the dictionary such that, given an execution <E, ->>, for every event e, x in V(e) if and only if
+  - insert(x) -> e AND
+  - There is no delete(x) event g such that g -> e
+*** Trivial solution - Lamport
+- Use the existing log and compute the V(e) as
+  - V(e) = {x | insert(x) in L_(e) and delete(x) not in L_(e)}
+- delete(x) might have happened at some other site but there is no causal relation so we don't care
+**** problem
+1. Log grows unboundedly (storage)
+2. Dictionary needs to be recomputed every time over an unboundedly growing log (compute)
+*** Actual not terrible solution - Also lamport?
+- Keep dictionary up to date based on current log
+- If i knows that all processes know about an event, it will never have to send that event
+- Thus, it can delete that event from the log
+**** Algorithm from perspective of site i
+- Insert(x) : local event
+  - Advance C_i
+  - T_i(i,i) = C_i
+  - PL_i (partial log) = PL_i union {(insert(x), C_i, i)}
+  - V_i = V_i union {x}
+- Delete(x) : local event
+  - Advance C_i
+  - T_i(i,i) = C_i
+  - PL_i = PL_i union {(delete(x), C_i, i)}
+  - V_i = V_i - {x}
+- send m to site k
+  - NP = {eR | eR in PL_i and not hasRec(T_i,eR,k)}
+  - send m = (NP, T_i) to site k
+- receive m = (NP_k, T_k) from k
+  - NE (new events) = {fR | fR in NP_k and not hasRec(T_i, fR, i)}
+  - V_i = {v | (v in V_i or insert(v) in NE) and not delete(v) in NE}
+  - update T_i as before in log algorithm
+  - PL_i = {eR | eR in {PL_i union NE} and there exists a j such that not hasRec(T_i, eR, j)}
+** Global Snapshots
+*** Motivation
+- In a long distributed computation, fault tolerance is achieved by having processes periodically save their state
+- After a failure, the process rolls back from one of its saved states
+  - Reduces the amount of lost computation
+- Each saved state is called a checkpoint
+*** Checkpoint-Based recovery
+- Uncoordinated checkpointing: each process takes its checkpoints independently
+- Coordinated checkpointing: processes coordinate their checkpoint to save a system-wide state
+**** Uncoordinated checkpointing
+- Checkpoints have to be done such that messages don't have to be resent
+***** Coordinated blocking
+- So do message coordination such that everyone is waiting for every node to stop computation
+- Once everyone is stopped, everyone can take checkpoints and signal that it's safe to move on
+- This is blocking
+- Disadvantages: blocking blows.  Let's not.
+***** Coordinated Non-blocking
+- Put a cut on the space-time diagram, take snapshot at each process when it hits the cut
+- Cannot have a cut such that there are messages that are received but never sent: "consistent cut"
+- It's okay to have a message that was sent but not received
+- We want a protocol that always produces a cons
+* Project 1 questions
+- Do we only need to be able to endure site failures, or also to enable site recoveries?
+  - Yes.
+- How to provide each node with the others' IP addresses?
+- Decide conflicts outside of Wuu-Bernstein, communicate resulting cancellations through 
+  Wuu-Bernstein
+* <2015-09-29 Tue> Global Snapshots cont and Broadcast Algorithms.
+- Most things on the slides today
+** Global Snapshots
+*** System model
+- M processes
+- Channels have infinite buffers, are error free, are FIFO
+- Channels are unidirectional
+  - C_ij denotes channel from p_i to p_j
+- Message delay is arbitrary but finite (asynchronous)
+*** Global states and cuts
+- The global process state is a M-tuple of local states, one for each process
+  - S = {s_1,s_2,...s_M}
+- A cut is a subset of the global history that contains an initial prefix of
+  each local state
+  - A cut is made by an observation event at each process O = {o_1,o_2...o_M}
+- Intuitively a cut partitions the spacetime diagram along the time axis
+*** Consistent cuts
+- We want to record a global process state that could have happened
+- A cut is a consistent cut if for all pairs of observations o_i and o_j (i!=j), o_i||o_j
+  - Eyeballing it, just look for phantom appearing messages
+- Suppose we can record a consistent cut S
+- Is this a sufficent record of the global state?
+  - No.  Messages may be in transit when the cut is taken.
+- State of channel C_ij is ordered list of messages L_ij = {m_1,m_2,...m_k}
+  - Messages that have been sent by i and have not yet been received by j
+  - L = {L_ij | for all channels c_ij}
+  - Global state G = (S,L)
+*** Snapshot algorithm
+- Distributed snapshot initiated by some process p_i
+- p_i records its state
+- p_i informs other processes about snapshot
+  - sends marker on all outgoing channels
+- when p_j receives marker for the first time,
+  - records state before receiving any other messages from p_i
+  - sends marker on all of its outgoing channels
+  - saves messages on incoming channels that it has not received a marker on
+- when p_j receives subsequent markers (e.g. on channel C_kj),
+  - stop saving messages for that channel
+  - channel state is the list of saved messages
+- QUIZ: do we need FIFO?
+** Fault tolerant broadcast
+- Broadcast: message sent to all other processes
+- Not fault tolerant: send message to 1 process and then crash.
+*** System model
+  - Asynchronous system
+  - Failure assumptions
+    - Processes may crash (but not recover)
+    - Link failures possible (not message loss)
+  - A process that does not crash is called correct
+  - Definitions
+    - p broadcasts m: p invokes function bcast(m)
+      - may not complete broadcast due to crash
+    - p delivers m: p completes execution of message delivery
+      - p decides when to deliver
+*** Reliable broadcast
+- Validity: If a correct process broadcasts a message m, then it eventually delivers m
+- Agreement: if a correct process delivers a message m, then eventually all correct
+  processes deliver m
+- Integrity: a correct process delivers a message m at most once, and only if m was sent
+  by a process
+*** Diffusion algorithm
+- At broadcast, a process p executes:
+- bcast(m)
+  - tag m with sender(m) and seq#(m)
+  - send(m) to all neighbors, including p
+- deliver(m) occurs as follows at every process
+- on receive(m)
+  - if p has not previously executed deliver(m)
+    - if sender(m) != p then send(m) to all neighbors
+    - deliver(m)
+- Assumption: no network partitions
+**** Analysis
+- Validity: Yes.  Broadcast to self --> receive --> deliver
+- Agreement: Yes.  Relaying messages happens before delivery.
+- Integrity: Yes.  No repeat delivery (explicit).
+- Why is relay important?
+*** FIFO broadcast
+- Reliable broadcast + FIFO order
+- If a process broadcasts a message m after it broadcasts a message m', then no
+  correct process delivers m unless it has previously delivered m'
+*** Causal broadcast
+- Reliable broadcast + causal order
+- If broadcast(m) happens before broadcast(m') then any process that delivers
+  both m and m' delivers m before m'
+- Does causal imply FIFO?
+  - Yes.  Single process FIFO is the first part of our happens-before definition.
+- Does FIFO imply causal?
+  - No.  JOHN MADDEN
+*** Atomic broadcast 
+- Reliable broadcast + total order
+- If two processes p_1 and p_2 deliver m and m', then p_1 delivers m before m'
+  if and only if p_2 delivers m before m'
+* <2015-10-02 Fri> Broadcast cont
+** System model
+  - Asynchronous system
+  - crash failures
+  - network graph is connected
+    - links can fail (i.e. become unavailable for messaging) but graph is not partitions
+    - assume graph is complete
+  - no message loss
+** Reliable Broadcast (RB)
+- Constraints
+  - Validity: If a correct process broadcasts a message m, then it eventually delivers m
+  - Agreement: if a correct process delivers a message m, then eventually all correct
+      processes deliver m
+  - Integrity: a correct process delivers a message m at most once, and only if m was sent by
+      a process
+- Diffusion algorithm for reliable broadcast
+  - broadcast (m)
+    - send (m, seq#) to all processes
+  - on receive of (m, seq#)
+    - if m not delivered already
+      - send (m, seq#) to all processes
+      - deliver(m)
+  - proof of correctness
+    - validity: by definition of the algorithm
+    - integrity: by seq #s of messages
+    - agreement: since process broadcasts (relays) m before delivering, all correct processes
+      will receive and deliver it.
+  - the order of relay/delivery is not important with respect to the constraints.  if your
+    strategy was to deliver then relay, and you crashed after delivery, you'd be incorrect,
+    so you wouldn't violate agreement, which only has something to say about correct
+    processes.
+** Uniform Reliable Broadcast
+- Constraints
+  - Validity and integrity are the same as for RB
+  - Uniform agreement: if a [not necessarily correct] process delivers a message m, then all
+    correct processes eventually deliver m
+- Does diffusion algorithm satisfy URB constraints? yes.
+** FIFO broadcast: RB + FIFO order
+- Transformation: given RB algorithm, transform into FIFO broadcast algorithm
+- Initialize
+  - msgSet = emptyset
+  - next[q] = 1 forall processes q
+- F_broadcast(m)
+  - R_broadcast(m)
+- on R_deliver(m)
+  - s = sender(m)
+  - msgSet = msgSet union {m}
+  - while there exists a message m' in msgSet such that sender(m) = s and seq#(m') = next[s]
+    - F_deliver(m')
+    - next[s] = next[s] + 1
+    - msgSet = msgSet - {m}
+** Newsgroup problem - we want causal broadcasts (CB)
+- We want all correct processes to deliver all broadcasts in causal order
+- CB implies FB, FB does not imply CB
+- Local order: if a process delivers message m before it broadcasts m', then no correct
+  process delivers m' unless it has previously delivered m.
+- Causal broadcast transformation: transforms FIFO broadcast into causal broadcast
+  - Initialize: 
+    - recentDeliveries = sequence of messages p C_delivered since its previous C_broadcast
+  - C_broadcast(m)
+    - F_broadcast(<recentDeliveries>+m)
+  - on F_deliver(m_1, m_2 . . . m_n)
+    - for i = 1..n if p has not C_delivered m_i then C_deliver(m_i)
+  - drawbacks: "big messages lotsa storage" - stacy
+** Replicated bank account problem - we want atomic broadcasts (AB)
+- RB + total order
+- Same sequence of messages delivered by all correct processes
+- RB: same set of messages delivered by all correct processes
+- Atomic broadcast is impossible in an asynchronous system with crash failures
+** ISIS - featuring 100% more beheadings (by Ken Birman, Cornell)
+- FBCAST (FIFO broadcast)
+- CBCAST (causal broadcast)
+- ABCAST (atomic broadcast)
+- relies on TCP for reliable messaging + relay
+- provides service so every process knows current group membership (called a view)
+*** CBCAST
+- uses vector clocks
+- Initialize VT_i[j] = 0 forall processes j
+- When p_i multicasts new message:
+  - VT_i[i] = VT_i[i]+1
+  - attach VT_i to message
+- When message delivered at p_j
+  - VT_j[k] = max(VT_j[k], msg.VT[k]) forall k
+- When to deliver a message
+  - at sender, deliver immediately
+  - when p_i's message arrives at p_j, queue it
+  - deliver when
+    1. msg.VT[i] = VT_j[i]+1 and
+    2. VT_j[k] >= msg.VT[k] forall k != i
+* <2015-10-06 Tue> Atomic Broadcast cont. + leader election
+** Amoeba Total Order Broadcast (Tanenbaum)
+- Uses sequences: process responsible for assigning sequence number to broadcast messages.
+- Processes use reliable broadcast to disseminate messages.
+- Sequencer assigns sequence number, uses reliable broadcast to tell other processes the
+  number.
+- Buh.  Our sequencer can crash.  We need a way to pick new sequencers.
+- This is what Yahadoop uses it's real ok this isn't lame ok ok?
+** Leader election
+- Need a single process to act as leader (coordinator, sequencer, etc)
+- Doesn't matter which one but
+  - there can only be one
+  - every process must agree on which one
+- Impossible to solve in systems with asynchronous crash failure woo
+*** General Approach - Bully Algorithm
+- Pick the process with the highest ID that is not currently crashed
+- Broadcast your own ID
+- Keep shouting highest ID found so far
+* <2015-10-09 Fri> Perfect channels, leader election cont., 2 generals
+** Perfect channels
+- If p sends a message to q, and p and q are correct, then q eventually receives the message.
+- Instead of reliable messaging: if p sends a message to q, and q is correct, then q
+  eventually receives the message
+** Leader election
+- System model
+  - every process has a unique ID
+  - processes know IDs of all other processes
+  - network is a complete graph
+  - communication is reliable and synchronous
+  - crash/recovery: message that is sent by process p to process q is received by q unless
+    q is down when the message arrives
+- Failure detection: use timeouts
+  - T_m: max message delay
+  - T_p: max processing time
+  - T = 2T_m + T_p
+  - If a process does not respond to a message within T time units, then sender knows the
+    recipient has failed
+- Bully Algorithm, Garcia-Molina 1992
+  - 3 types of messages: election, ok, coordinator
+  - processes can initiate leader election
+  - To initiate election:
+    - process p sends election message to all processes with higher IDs
+    - if no one responds, p will win the election and become the new leader
+    - if it does get a response, it's the loser.  it's ogre.
+  - on receiving election message from lower ID process q:
+    - send OK message to q
+    - initiate election if not already holding one
+  - Eventually all process give up except one, which is the new leader
+    - this process sends coordinator message to all processes
+  - on recovery from failure:
+    - initiate election
+  - message complexity:
+    - best case: process with 2nd highest ID detects leader failure first, sends n-2
+      "coordinator" messages; O(n)
+    - worst case: process with lowest ID detects leader failure first, O(n^2)
+- Ring Algorithm
+  - processes arranged in a logical ring
+  - process knows "downstream" neighbors
+  - process initiates election when:
+    1. it recovers from failure or
+    2. it detects current leader has failed
+  - election initiation
+    - initiator sends election message to closest downstream neighbor that is alive
+    - election message is forwarded around the ring
+    - every process adds its ID to the message
+    - when message arrives back at initiator:
+      - initiator selects max ID and tells everyone that's the coordinator by sending the
+        coordinator message around the ring
+    - coordinator message only circulates once
+  - message complexity: 2n always per election
+** The Two Generals Problem
+* <2015-10-20 Tue> Impossibility of Consensus with One Faulty Process (FLP)
+** Consensus Requirements
+- Strong Consensus
+  - Agreement: No two processes decide on different values
+  - Validity: The value that is decided was proprosed by some process
+  - Termination: All non-faulty processes eventually decide
+- And FLP addresses a weaker form of consensus
+** FLP Result
+- Applies to asynchronous distributed system where at most one process fails
+  - No message loss
+- We will show that, for any consensus algorith, there is an execution in which no process
+  makes a decision
+** System model
+- n>=2 processes
+- asynchronous system
+- reliable communication (no messages lost)
+- at most one crash failure
+- every process has an input register (either 0 or 1)
+- every process has an output register (write once ever)
+** Communication model
+- messages: (p,m) p = recipient m = message contents
+- single message buffer B for entire system
+  - send_p(q,m): put (q,m) in B
+  - receive_p(): either removes (p,m) from buffer and returns m, or returns null
+  - if p invokes receive() infinitely many times, then eventually all (p,m) messages will
+    be removed from the buffer and delivered to p
+** Definitions
+- A configuraiton C: internal state of all processes and contents of B
+  - Initial configuration: initial internal states and empty buffer
+- An event e=(p,m) takes the system from one configuration to the next
+  - results in step at process p
+    - receive_p() = m
+    - p updates internal state
+    - p sends finite # of messages
+- C' = e(C): e is applied to config C and C' is the resulting configuration
+- a process is non-faulty if it takes iniftely many steps, otherwise it is faulty
+- a schedule sigma is a finite sequence of events; C' = sigma(c) means sigma applied to c
+- a run is the associated sequence of steps
+- reachable: C' = sigma(C) for some sigma
+  - a configuration that is reachable from some initial config is called accessible
+- A configuration C has a decision value V if some process p has decided V in C
+- a run is a deciding run if some process decides in that run
+- a consensus protocol is partially correct if
+  1. no accessible configuration has >1 decision values and
+  2. for each v in {0,1}, some accessible configuration has decision value v
+- a run is admissible if at most one process is faulty and all messages to non-faulty are
+  delivered
+  - deliver === receive
+- a consensus protocol is totally correct in spite of one failure if
+  1. it is partially correct and
+  2. every admissible run is a deciding run
+- Let V be a set of decision values of configurations reachable from initial configuraiton C
+  - If V={0,1}, C is bivalent
+  - if V={0},   C is univalent, 0-valent
+  - if V={1},   C is 1-valent
+** Lemma 1
+- Consider 2 schedules sigma_1 and sigma_2 on disjoint processes
+- Let C_1 = sigma_1(C) and C_2 = sigma_2(C)
+- sigma_2(C_1) == sigma_1(C_2)
+** Theorem: no consensus protocol is totally correct in spite of one fault
+- Proof by contradiction
+  - Assume there is a protocol P
+  - Show there are circumstances in which no process ever decides
+*** Lemma 2: P has a bivalent initial configuration
+- Proof by contradiction: assume P does not have a bivalent initial configuration
+- Then P must have both 0-valent and 1-valent initial configurations
+- There must be some initial 0-valent initial configuration that differs from some
+  1-valent initial configuration by one process p - they are adjacent
+- consider admissible deciding run from C_0 (initial 0-valent config) in which p takes
+  no steps
+- let sigma be the corresponding schedule
+- can also apply sigma to C_1 (initial 1-valent config)
+- C_0 and C_1 then must reach the same decision value (say V=1)
+  - contradiction: C_0 must be bivalent
+*** Lemma 3
+- Let C be a bivalent configuration
+- Let e=(p,m) be an event that is applicable to C
+- Let scriptC be the set of configurations reachable from C without applying e
+- Let scriptD = e(scriptC) = {e(E) | E in scriptC}
+- Then scriptD contains a bivalent configuration
+- tl;dr nobody can decide anything ever
+- Proof by contradiction
+  - Assume scriptD contains no bivalent configurations
+**** Part 1: prove that scriptD contains 0-valent and 1-valent configs
+- Let E_0 be a 0-valent configuration reachable from C.
+  - We can do this because we assume our protocol is correct.
+- If E_0 in scriptC (e wasn't applied yet), let F_0 = e(E_0)
+  - C -> E_0 --apply e--> F_0
+- Else E_0 not in script C
+  - C --apply e--> F_0 --> E_0
+- Both cases lead to F_0 in scriptD
+- Either way F_0 is not bivalent by assumption and is 0-valent
+- Similarly there exists F_1 in scriptD that is 1-valent
+- Assuming protocol is correct, scriptD must contain a 1-valent and 0-valent config
+**** Part 2: 
+***** a
+- There exist configurations C_0, C_1 in scriptC with C_1=e'(C) for some e'=(p',m') such
+  that
+  - D_1 = e(C_1) is 1-valent
+  - D_0 = e(C_0) is 0-valent
+- without loss of generalization assume e(C) is 0-valent
+- Define sigma=e_1, e_2...e_n
+  - sigma(C) in scriptC
+  - e(sigma(C)) is 1-valent
+    - in part 1 we showed that scriptD has a 1-valent configuration, we have arbitrarily
+      decided that sigma is the way there
+  - e(c) ---> 0 valent
+  - e(e_1(c)) ---> 0 valent
+  - e(e_2(e_1(c))) ---> 0 valent
+  - e(e_3(e_2(e_1(c)))) ---> 1 valent
+    - e_2(e_1(c)) = c_0
+    - e_3(e_2(e_1(c))) = c_1
+    - e_3 = e'
+  - e(sigma(c)) is 1-valent
+- e=(p,m) and e(C_0) = D_0 (0 valent)
+- e'=(p',m') and e(e'(C_0)) = D_1 (1 valent)
+- If p != p'
+  - Then D_1 = e'(D_0) by Lemma 1
+  - Contradiction: cannot go from 0-valent to 1-valent
+***** b
+- e = (p,m), e'=(p',m') and p=p'
+- e(C_0) = D_0 (0-valent), e(e'(C_0)) = D_1 (1-valent
+- let sigma be a deciding schedule in which p takes no steps A=sigma(C_0)
+  - p could be faulty so if the protocol is correct this must exist
+  - we can never actually know whether p has crashed because asynchrony
+- Maybe p hasn't failed but is just taking a really long time
+  - e(A) = E_0
+  - e(e'(A)) = E_1
+  - These commute, so sigma(D_0) = E_0, sigma(D_1) = E_1
+  - Contradiction: A was deciding but E_0 (0-valent) and E_1 (1-valent) are reachable 
+    from A
+*** Tie it together
+- Construct a schedule in which
+  1. Every nonfaulty process takes infinitely many steps and
+  2. no process makes a decision
+- Stage 0: select initial bivalent configuration
+  - Lemma 2 says one exists
+- Order processes p_1, p_2, ... p_N
+- Stage i>0:
+  - select e=(p_i,m_i) where p_i at head of queue
+  - build bivalent configuration C_i from C_(i-1) by applying e last using Lemma 3
+  - move p_i to back of queue
+- The contradiction is thus satisfied
+- No process needs to fail
+* <2015-10-23 Fri> Byzantine Generals - see powerpoint
+- It's impossible to solve the Byzantine Generals problem when there are 3 participants
+  and 1 is a traitor
+- Theorem: for T traitors among M participants, there is no solution to the Byzantine
+  Generals problem for M<3T+1
+* <2015-10-27 Tue> Byzantine Generals cont. 
+- QUIZ: if i had a leader algorithm how would i solve consensus?
+- Review
+  - Can't distinguish between failed processes and processes taking a really long time
+  - Byzantine failure: generals can be disloyal (they can do whatever they want)
+  - Need all generals to reach the same decision
+** Byzantine Generals Problem: 
+- A commanding general must send an order to N-1 lieutenants such that:
+  1. All loyal lieutenants obey the same order
+  2. If the commanding general is loyal, then every loyal lieutenant obeys the order he
+     sends
+** System model
+- n processes, at most t faulty, with n>3t
+- network is fully connected
+- reliable messaging
+- synchronous system
+** Processes communicate with "oral messages"
+1. Every message that is sent is delivered correctly
+2. The receiver of a message knows who sent it
+3. The absence of a message can be detected
+** Defaults
+- Traitorous commander cannot send order
+  - Lt. uses RETREAT as default value
+- If no majority value, pick RETREAT
+** Al Gore ithm: Oral Messages
+- S is the set of processes (one commander, rest lieutenants)
+- m is the number of traitors, initially t
+*** Base case m=0: OM(0,S)
+1. Commander i sends v to every general j in S-{i}
+2. Each general j!=i returns v or RETREAT if no value received
+*** OM(m,S) for m>0
+1. Commander i sends v to every general j in S-{i}
+2. For each genral j in S-{i}
+   - v=value received from commander (step 1)
+   - act as commander to execute OM(m-1, S-{i})
+3. For all generals j in S-{i}
+   - for all k!=j, v_k = value general j received from general k or RETREAT if no v_k
+     received
+   - return majority (v, {v_k})
+** Proof of correctness
+- IC1: All loyal generals obey the same order
+- IC2: If the commander is loyal, every loyal general obeys the order he sends
+*** Lemma 1: 
+- For any m and k, the algorithm satisfies IC2 if there are more than 2k+m
+  generals and at most k traitors
+- Proof by induction on m:
+  - Base case m=0: IC2 follows from OM(0,S)
+  - Inductive step: Assume Lemma holds for m-1.  Show this implies it holds for m. (only
+    care about loyal commander)
+    - In OM(m), loyal commander sends v to all Lts. Then lieutenants execute OM(m-1) with
+      n-1 generals.
+    - Since n>2k+m, n-1>2k+(m-1)
+    - By inductive hypothesis, in OM(m-1) every loyal lieutenant learns v_j = v for all
+      loyal lieutenants j
+    - n-1 > 2k + (m-1) implies n-1 > 2k
+      - means majority of n-1 lieutenants are loyal, so majority of {v_j} = v
+*** Theorem
+- For any m, the algorithm OM(m) satisfies IC1 and IC2 if there are more than 3m generals
+  and at most m traitors
+- Proof by induction on m:
+  - Base case m=0, is OM(0) correct? trivially, yes.  no traitors, no problems.
+  - Inductive step: assume theorem holds for >3(m-1) generals and <=m-1 traitors
+    - If commander is loyal
+      - Lemma 1 applies, which gives IC2
+      - IC2 follows from IC2 if commander is loyal
+    - If commander is disloyal
+      - At most m-1 lieutenants are traitors
+      - there are >3m generals, so there are >3m-1 lieutenants
+      - 3m-1 > 3(m-1)
+      - Each lieutenant executes OM(m-1) in system with >3(m-1) generals and <=m-1
+        traitors
+      - So OM(m-1) satisfies IC1 and IC2
+        - So every loyal lieutenant has same set of values to take majority in OM(m)
